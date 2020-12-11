@@ -26,7 +26,9 @@ using namespace Rcpp;
 //data should come in sorted with all trt first, then control cases
 
 // [[Rcpp::export]]
-List bcfoverparRcppClean_ini(NumericVector y_, NumericVector z_, NumericVector w_,
+List bcfoverparRcppClean_ini(
+                bool ini_bcf, SEXP treedraws_con, SEXP treedraws_mod, double muscale_ini, double bscale0_ini, double bscale1_ini, double sigma_ini, double pi_con_tau, double pi_con_sigma, double pi_mod_tau, double pi_mod_sigma, double mod_tree_scaling,
+                  NumericVector y_, NumericVector z_, NumericVector w_,
                   NumericVector x_con_, NumericVector x_mod_, 
                   List x_con_info_list, List x_mod_info_list, 
                   arma::mat random_des, //needs to come in with n rows no matter what(?)
@@ -42,7 +44,8 @@ List bcfoverparRcppClean_ini(NumericVector y_, NumericVector z_, NumericVector w
                   CharacterVector treef_con_name_, CharacterVector treef_mod_name_,
                   int status_interval=100,
                   bool RJ= false, bool use_mscale=true, bool use_bscale=true, bool b_half_normal=true, bool prior_sample=false,
-                  double trt_init = 1.0, bool verbose_sigma=false)
+                  double trt_init = 1.0, bool verbose_sigma=false,
+                  bool update_mu_loading_tree = false)
 {
 
   bool randeff = true;
@@ -177,26 +180,187 @@ List bcfoverparRcppClean_ini(NumericVector y_, NumericVector z_, NumericVector w
   //  Rcout <<"\nburn,nd,number of trees: " << burn << ", " << nd << ", " << m << endl;
   //  Rcout <<"\nlambda,nu,kfac: " << lambda << ", " << nu << ", " << kfac << endl;
 
+    // cout << "before loading trees " << endl;
+    // load trees
+    Rcpp::CharacterVector itrees_con(Rcpp::wrap(treedraws_con));
+    Rcpp::CharacterVector itrees_mod(Rcpp::wrap(treedraws_mod));
+
+    std::string itv_con(itrees_con[0]);
+    std::stringstream ttss_con(itv_con);
+    size_t mm_con, pp_con;
+    ttss_con >> mm_con >> pp_con;
+    std::vector<tree> t_con(mm_con);
+    std::vector<tree::tree_p> temp_node;
+    size_t index_in_full;
+    for (size_t j = 0; j < mm_con; j++)
+    {
+        // load from input trees, cutpoint are raw values
+        ttss_con >> t_con[j];
+
+        // search xinfo matrix in bcf package, find corresponding index of cutpoints
+        temp_node.clear();
+        t_con[j].getnodes(temp_node);
+        // cout << " print some nodes " << endl;
+        // cout << "variable index " << temp_node[0]->getv() << " cutpoint index " << temp_node[0]->getc() << " cutpoint value " << temp_node[0]->getc_value() << endl;
+
+        if (!ini_bcf)
+        {
+            // if not initialize at BCF
+            // initialize at XBCF
+            // need to figure out indicies of cutpoint in xi matrix
+
+            // cout << "call initialization of XBCF " << endl;
+            for (size_t kk = 0; kk < temp_node.size(); kk++)
+            {
+                if (temp_node[kk]->getl())
+                {
+                    // if left / right child exist, it is not a leaf node
+
+                    if (xi_con[temp_node[kk]->getv()].size() == 1)
+                    {
+                        // if there is only one cutpoint candidate (binary variable)
+                        // you have to split at 0.5
+                        // index is 0 and value is 0.5
+                        temp_node[kk]->setc(0);
+                        temp_node[kk]->setc_value(0.5);
+                    }
+                    else
+                    {
+                        index_in_full = 0;
+                        while (xi_con[temp_node[kk]->getv()][index_in_full] < temp_node[kk]->getc_value() && index_in_full <= xi_con[temp_node[kk]->getv()].size())
+                        {
+                            index_in_full++;
+                        }
+
+                        if (index_in_full > xi_con[temp_node[kk]->getv()].size())
+                        {
+                            index_in_full = xi_con[temp_node[kk]->getv()].size() - 1;
+                        }
+                        temp_node[kk]->setc(index_in_full - 1);
+                    }
+                }
+            }
+        }
+
+        // cout << " print some nodes, after " << endl;
+        // cout << "variable index " << temp_node[0]->getv() << " cutpoint index " << temp_node[0]->getc() << " cutpoint value " << temp_node[0]->getc_value() << endl;
+        // cout << " last cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc() - 1] << " current cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc()] << " next cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc() + 1] << endl;
+        // cout << "---------------------------------" << endl;
+    }
+
+    // cout << "load mod trees " << endl;
+
+    std::string itv_mod(itrees_mod[0]);
+    std::stringstream ttss_mod(itv_mod);
+    size_t mm_mod, pp_mod;
+    ttss_mod >> mm_mod >> pp_mod;
+    std::vector<tree> t_mod(mm_mod);
+    for (size_t j = 0; j < mm_mod; j++)
+    {
+        ttss_mod >> t_mod[j];
+
+        // search xinfo matrix in bcf package, find corresponding index of cutpoints
+        temp_node.clear();
+        t_mod[j].getnodes(temp_node);
+        // cout << " print some nodes " << endl;
+        // cout << "variable index " << temp_node[0]->getv() << " cutpoint index " << temp_node[0]->getc() << " cutpoint value " << temp_node[0]->getc_value() << endl;
+
+        if (!ini_bcf)
+        {
+            // cout << "call initialization of XBCF " << endl;
+
+            for (size_t kk = 0; kk < temp_node.size(); kk++)
+            {
+                if (temp_node[kk]->getl())
+                {
+                    // if left / right child exist, it is not a leaf node
+
+                    if (xi_mod[temp_node[kk]->getv()].size() == 1)
+                    {
+                        // if there is only one cutpoint candidate (binary variable)
+                        // you have to split at 0.5
+                        // index is 0 and value is 0.5
+                        temp_node[kk]->setc(0);
+                        temp_node[kk]->setc_value(0.5);
+                    }
+                    else
+                    {
+                        index_in_full = 0;
+                        while (xi_mod[temp_node[kk]->getv()][index_in_full] < temp_node[kk]->getc_value() && index_in_full <= xi_mod[temp_node[kk]->getv()].size())
+                        {
+                            index_in_full++;
+                        }
+
+                        if (index_in_full > xi_mod[temp_node[kk]->getv()].size())
+                        {
+                            index_in_full = xi_mod[temp_node[kk]->getv()].size() - 1;
+                        }
+                        temp_node[kk]->setc(index_in_full - 1);
+                    }
+                }
+            }
+        }
+        // cout << " print some nodes, after " << endl;
+        // cout << "variable index " << temp_node[0]->getv() << " cutpoint index " << temp_node[0]->getc() << " cutpoint value " << temp_node[0]->getc_value() << endl;
+        // cout << " last cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc() - 1] << " current cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc()] << " next cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc() + 1] << endl;
+        // cout << "---------------------------------" << endl;
+    }
+
+    // scale all mod trees tau(x) * (b1 - b0) from XBCF
+    // for (size_t j = 0; j < mm_mod; j++)
+    // {
+    //     temp_node.clear();
+    //     t_mod[j].getnodes(temp_node);
+    //     for (size_t kk = 0; kk < temp_node.size(); kk++)
+    //     {
+    //         cout << "before scaling mod tree " << temp_node[kk]->getm() << endl;
+    //         temp_node[kk]->setm(temp_node[kk]->getm() * mod_tree_scaling);
+    //         cout << "after scaling mod tree " << temp_node[kk]->getm() << endl;
+    //     }
+    // }
+
+    // cout << "scaling parameter " << mod_tree_scaling << endl;
+
+    // cout << "load all trees " << endl;
+
+    // cout << "print con trees " << endl;
+    // for (size_t tt = 0; tt < mm_con; tt++)
+    // {
+    //     cout << "index " << tt << endl;
+    //     cout << t_con[tt] << endl;
+    // }
+
+    // cout << "print mod trees " << endl;
+    // for (size_t tt = 0; tt < mm_mod; tt++)
+    // {
+    //     cout << "index " << tt << endl;
+    //     cout << t_mod[tt] << endl;
+    // }
+
+
   /*****************************************************************************
   /* Setup the model
   *****************************************************************************/
   //--------------------------------------------------
-  //trees
-  std::vector<tree> t_mod(ntree_mod);
-  for(size_t i=0;i<ntree_mod;i++) t_mod[i].setm(trt_init/(double)ntree_mod);
+//   //trees
+//   std::vector<tree> t_mod(ntree_mod);
+//   for(size_t i=0;i<ntree_mod;i++) t_mod[i].setm(trt_init/(double)ntree_mod);
 
-  std::vector<tree> t_con(ntree_con);
-  for(size_t i=0;i<ntree_con;i++) t_con[i].setm(ybar/(double)ntree_con);
+//   std::vector<tree> t_con(ntree_con);
+//   for(size_t i=0;i<ntree_con;i++) t_con[i].setm(ybar/(double)ntree_con);
 
   //--------------------------------------------------
   //prior parameters
   // PX scale parameter for b: 
   double bscale_prec = 2;
-  double bscale0 = -0.5;
-  double bscale1 = 0.5;
+//   double bscale0 = -0.5;
+//   double bscale1 = 0.5;
+  double bscale0 = bscale0_ini;
+  double bscale1 = bscale1_ini;
 
   double mscale_prec = 1.0;
-  double mscale = 1.0;
+  // double mscale = 1.0;
+  double mscale = muscale_ini;
   double delta_con = 1.0;
   double delta_mod = 1.0;
 
@@ -205,9 +369,14 @@ List bcfoverparRcppClean_ini(NumericVector y_, NumericVector z_, NumericVector w
   pi_mod.pb = .5; //prob of birth given  birth/death
 
   pi_mod.alpha = mod_alpha; //prior prob a bot node splits is alpha/(1+d)^beta, d is depth of node
-  pi_mod.beta  = mod_beta;  //2 for bart means it is harder to build big trees.
-  pi_mod.tau   = mod_sd/(sqrt(delta_mod)*sqrt((double) ntree_mod)); //sigma_mu, variance on leaf parameters
-  pi_mod.sigma = shat; //resid variance is \sigma^2_y/bscale^2 in the backfitting update
+  pi_mod.beta = mod_beta;   //2 for bart means it is harder to build big trees.
+  // pi_mod.tau = con_sd / (sqrt(delta_mod) * sqrt((double)ntree_mod)); //sigma_mu, variance on leaf parameters
+  // cout << "pi mod tau " << con_sd / (sqrt(delta_mod) * sqrt((double)ntree_mod)) << " " << pi_mod_tau << endl;
+  pi_mod.tau = pi_mod_tau;
+  shat = sigma_ini;
+  // pi_mod.sigma = shat; //resid variance is \sigma^2_y/bscale^2 in the backfitting update
+  // cout << "pi mod sigma " << shat << " " << pi_mod_sigma << endl;
+  pi_mod.sigma = pi_mod_sigma;
 
   pinfo pi_con;
   pi_con.pbd = 1.0; //prob of birth/death move
@@ -215,36 +384,100 @@ List bcfoverparRcppClean_ini(NumericVector y_, NumericVector z_, NumericVector w
 
   pi_con.alpha = con_alpha;
   pi_con.beta  = con_beta;
-  pi_con.tau   = con_sd/(sqrt(delta_con)*sqrt((double) ntree_con)); //sigma_mu, variance on leaf parameters
+  // pi_con.tau   = con_sd/(sqrt(delta_con)*sqrt((double) ntree_con)); //sigma_mu, variance on leaf parameters
+  // pi_con.sigma = shat/fabs(mscale); //resid variance in backfitting is \sigma^2_y/mscale^2
 
-  pi_con.sigma = shat/fabs(mscale); //resid variance in backfitting is \sigma^2_y/mscale^2
+  pi_con.tau = pi_con_tau;
+  pi_con.sigma = pi_con_sigma;
 
-  double sigma = shat;
+  double sigma = sigma_ini;
 
   // @Peter This is where dinfo is initialized
 
   //--------------------------------------------------
   //dinfo for control function m(x)
 //  Rcout << "ybar " << ybar << endl;
-  double* allfit_con = new double[n]; //sum of fit of all trees
-  for(size_t i=0;i<n;i++) allfit_con[i] = ybar;
-  double* r_con = new double[n]; //y-(allfit-ftemp) = y-allfit+ftemp
-  dinfo di_con;
-  di_con.n=n; 
-  di_con.p = p_con; 
-  di_con.x = &x_con[0]; 
-  di_con.y = r_con; //the y for each draw will be the residual
+  // double* allfit_con = new double[n]; //sum of fit of all trees
+  // for(size_t i=0;i<n;i++) allfit_con[i] = ybar;
+  // double* r_con = new double[n]; //y-(allfit-ftemp) = y-allfit+ftemp
+  // dinfo di_con;
+  // di_con.n=n; 
+  // di_con.p = p_con; 
+  // di_con.x = &x_con[0]; 
+  // di_con.y = r_con; //the y for each draw will be the residual
 
-  //--------------------------------------------------
-  //dinfo for trt effect function b(x)
-  double* allfit_mod = new double[n]; //sum of fit of all trees
-  for(size_t i=0;i<n;i++) allfit_mod[i] = (z_[i]*bscale1 + (1-z_[i])*bscale0)*trt_init;
-  double* r_mod = new double[n]; //y-(allfit-ftemp) = y-allfit+ftemp
+  // //--------------------------------------------------
+  // //dinfo for trt effect function b(x)
+  // double* allfit_mod = new double[n]; //sum of fit of all trees
+  // for(size_t i=0;i<n;i++) allfit_mod[i] = (z_[i]*bscale1 + (1-z_[i])*bscale0)*trt_init;
+  // double* r_mod = new double[n]; //y-(allfit-ftemp) = y-allfit+ftemp
+  // dinfo di_mod;
+  // di_mod.n=n; 
+  // di_mod.p=p_mod; 
+  // di_mod.x = &x_mod[0]; 
+  // di_mod.y = r_mod; //the y for each draw will be the residual
+
+
+
+  double *ftemp = new double[n]; //fit of current tree
+
+  double *allfit_con = new double[n]; //sum of fit of all trees
+  double *allfit_mod = new double[n]; //sum of fit of all trees
+  double *allfit = new double[n];     //yhat
+  double *r_con = new double[n];      //y-(allfit-ftemp) = y-allfit+ftemp
+  double *r_mod = new double[n];      //y-(allfit-ftemp) = y-allfit+ftemp
+  dinfo di_con;
+  di_con.n = n;
+  di_con.p = p_con;
+  di_con.x = &x_con[0]; //the y for each draw will be the residual
+
   dinfo di_mod;
-  di_mod.n=n; 
-  di_mod.p=p_mod; 
-  di_mod.x = &x_mod[0]; 
-  di_mod.y = r_mod; //the y for each draw will be the residual
+  di_mod.n = n;
+  di_mod.p = p_mod;
+  di_mod.x = &x_mod[0]; //the y for each draw will be the residual
+  // di_con.w = w;
+  // di_mod.w = w;
+
+  // initialize allfit, residuals from trees read in
+  for (size_t kk = 0; kk < n; kk++)
+  {
+      allfit[kk] = 0;
+      allfit_con[kk] = 0;
+      allfit_mod[kk] = 0;
+  }
+
+  for (size_t j = 0; j < ntree_con; j++)
+  {
+      fit(t_con[j], xi_con, di_con, ftemp);
+      for (size_t k = 0; k < n; k++)
+      {
+          allfit[k] += mscale * ftemp[k];
+          allfit_con[k] += mscale * ftemp[k];
+          r_con[k] = (y[k] - allfit[k]) / mscale;
+      }
+  }
+
+  for (size_t j = 0; j < ntree_mod; j++)
+  {
+      fit(t_mod[j], xi_mod, di_mod, ftemp);
+      for (size_t k = 0; k < ntrt; k++)
+      {
+          allfit[k] += bscale1 * ftemp[k];
+          allfit_mod[k] += bscale1 * ftemp[k];
+          r_mod[k] = (y[k] - allfit[k]) / bscale1;
+      }
+      for (size_t k = ntrt; k < n; k++)
+      {
+          allfit[k] += bscale0 * ftemp[k];
+          allfit_mod[k] += bscale0 * ftemp[k];
+          r_mod[k] = (y[k] - allfit[k]) / bscale0;
+      }
+  }
+
+  di_con.y = r_con;
+  di_mod.y = r_mod;
+
+
 
   //--------------------------------------------------
   //setup for random effects
@@ -273,12 +506,12 @@ List bcfoverparRcppClean_ini(NumericVector y_, NumericVector z_, NumericVector w
 
   //--------------------------------------------------
   //storage for the fits
-  double* allfit = new double[n]; //yhat
+  // double* allfit = new double[n]; //yhat
   for(size_t i=0;i<n;i++) {
     allfit[i] = allfit_mod[i] + allfit_con[i];
     if(randeff) allfit[i] += allfit_random[i];
   }
-  double* ftemp  = new double[n]; //fit of current tree
+  // double* ftemp  = new double[n]; //fit of current tree
 
   NumericVector sigma_post(nd);
   NumericVector msd_post(nd);
@@ -331,6 +564,87 @@ List bcfoverparRcppClean_ini(NumericVector y_, NumericVector z_, NumericVector w
   double* weight_het  = new double[n];
 
   logger.setLevel(0);
+
+  if (update_mu_loading_tree)
+  {
+      cout << "update leaf parameter after loading trees " << endl;
+      // draw leaf parameters after loading trees
+
+      for (size_t iTreeCon = 0; iTreeCon < ntree_con; iTreeCon++)
+      {
+
+          fit(t_con[iTreeCon], xi_con, di_con, ftemp);
+
+          for (size_t k = 0; k < n; k++)
+          {
+              allfit[k] = allfit[k] - mscale * ftemp[k];
+              allfit_con[k] = allfit_con[k] - mscale * ftemp[k];
+              r_con[k] = (y[k] - allfit[k]) / mscale;
+          }
+
+          for (int k = 0; k < n; ++k)
+          {
+              weight[k] = w[k] * mscale * mscale / (sigma * sigma);
+          }
+
+          drmu(t_con[iTreeCon], xi_con, di_con, pi_con, weight, gen);
+
+          fit(t_con[iTreeCon], xi_con, di_con, ftemp);
+
+          for (size_t k = 0; k < n; k++)
+          {
+              allfit[k] += mscale * ftemp[k];
+              allfit_con[k] += mscale * ftemp[k];
+          }
+      }
+
+      //draw trees for b(x)
+      for (size_t k = 0; k < ntrt; ++k)
+      {
+          weight_het[k] = w[k] * bscale1 * bscale1 / (sigma * sigma);
+      }
+      for (size_t k = ntrt; k < n; ++k)
+      {
+          weight_het[k] = w[k] * bscale0 * bscale0 / (sigma * sigma);
+      }
+
+      for (size_t iTreeMod = 0; iTreeMod < ntree_mod; iTreeMod++)
+      {
+          fit(t_mod[iTreeMod], xi_mod, di_mod, ftemp);
+
+          for (size_t k = 0; k < n; k++)
+          {
+              double bscalex = (k < ntrt) ? bscale1 : bscale0;
+              allfit[k] = allfit[k] - bscalex * ftemp[k];
+              allfit_mod[k] = allfit_mod[k] - bscalex * ftemp[k];
+              r_mod[k] = (y[k] - allfit[k]) / bscalex;
+          }
+
+          drmu(t_mod[iTreeMod], xi_mod, di_mod, pi_mod, weight_het, gen);
+
+          fit(t_mod[iTreeMod], xi_mod, di_mod, ftemp);
+
+          for (size_t k = 0; k < ntrt; k++)
+          {
+              allfit[k] += bscale1 * ftemp[k];
+              allfit_mod[k] += bscale1 * ftemp[k];
+          }
+          for (size_t k = ntrt; k < n; k++)
+          {
+              allfit[k] += bscale0 * ftemp[k];
+              allfit_mod[k] += bscale0 * ftemp[k];
+          }
+      }
+  }else{
+  }
+
+  // cout << "print con trees, after updating leaf parameters" << endl;
+  // for (size_t tt = 0; tt < 3; tt++)
+  // {
+  //     cout << "index " << tt << endl;
+  //     cout << t_con[tt] << endl;
+  // }
+
 
   bool printTrees = false;
 

@@ -1,4 +1,7 @@
-bcf_ini <- function(y, z, x_control, x_moderate=x_control, pihat, w = NULL, 
+bcf_ini <- function(
+                treedraws_con, treedraws_mod, muscale_ini, bscale0_ini, bscale1_ini, sigma_ini, pi_con_tau, pi_con_sigma,
+                pi_mod_tau, pi_mod_sigma, mod_tree_scaling,
+                y, z, x_control, x_moderate=x_control, pihat, w = NULL, 
                 random_seed = sample.int(.Machine$integer.max, 1),
                 n_chains = 4,
                 n_cores  = n_chains,
@@ -14,7 +17,9 @@ bcf_ini <- function(y, z, x_control, x_moderate=x_control, pihat, w = NULL,
                 power_moderate = 3,
                 save_tree_directory = '..',
                 nu = 3, lambda = NULL, sigq = .9, sighat = NULL,
-                include_pi = "control", use_muscale=TRUE, use_tauscale=TRUE, verbose=FALSE
+                include_pi = "control", use_muscale=TRUE, use_tauscale=TRUE, verbose=FALSE,
+                ini_bcf = FALSE, update_mu_loading_tree = FALSE,
+                x_c = NULL, x_m = NULL, cutpoint_list_c = NULL, cutpoint_list_m = NULL
 ) {
 
   
@@ -23,60 +28,74 @@ bcf_ini <- function(y, z, x_control, x_moderate=x_control, pihat, w = NULL,
     }
 
   pihat = as.matrix(pihat)
-  if(!.ident(length(y),
-             length(z),
-             length(w),
-             nrow(x_control),
-             nrow(x_moderate),
-             nrow(pihat))
-    ) {
-    stop("Data size mismatch. The following should all be equal:
-         length(y): ", length(y), "\n",
-         "length(z): ", length(z), "\n",
-         "length(w): ", length(w), "\n",
-         "nrow(x_control): ", nrow(x_control), "\n",
-         "nrow(x_moderate): ", nrow(x_moderate), "\n",
-         "nrow(pihat): ", nrow(pihat),"\n"
-    )
-  }
+  # if(!.ident(length(y),
+  #            length(z),
+  #            length(w),
+  #            nrow(x_control),
+  #            nrow(x_moderate),
+  #            nrow(pihat))
+  #   ) {
+  #   stop("Data size mismatch. The following should all be equal:
+  #        length(y): ", length(y), "\n",
+  #        "length(z): ", length(z), "\n",
+  #        "length(w): ", length(w), "\n",
+  #        "nrow(x_control): ", nrow(x_control), "\n",
+  #        "nrow(x_moderate): ", nrow(x_moderate), "\n",
+  #        "nrow(pihat): ", nrow(pihat),"\n"
+  #   )
+  # }
 
-  if(any(is.na(y))) stop("Missing values in y")
-  if(any(is.na(z))) stop("Missing values in z")
-  if(any(is.na(w))) stop("Missing values in w")
-  if(any(is.na(x_control))) stop("Missing values in x_control")
-  if(any(is.na(x_moderate))) stop("Missing values in x_moderate")
-  if(any(is.na(pihat))) stop("Missing values in pihat")
-  if(any(!is.finite(y))) stop("Non-numeric values in y")
-  if(any(!is.finite(z))) stop("Non-numeric values in z")
-  if(any(!is.finite(w))) stop("Non-numeric values in w")
-  if(any(!is.finite(x_control))) stop("Non-numeric values in x_control")
-  if(any(!is.finite(x_moderate))) stop("Non-numeric values in x_moderate")
-  if(any(!is.finite(pihat))) stop("Non-numeric values in pihat")
-  if(!all(sort(unique(z)) == c(0,1))) stop("z must be a vector of 0's and 1's, with at least one of each")
+  # if(any(is.na(y))) stop("Missing values in y")
+  # if(any(is.na(z))) stop("Missing values in z")
+  # if(any(is.na(w))) stop("Missing values in w")
+  # if(any(is.na(x_control))) stop("Missing values in x_control")
+  # if(any(is.na(x_moderate))) stop("Missing values in x_moderate")
+  # if(any(is.na(pihat))) stop("Missing values in pihat")
+  # if(any(!is.finite(y))) stop("Non-numeric values in y")
+  # if(any(!is.finite(z))) stop("Non-numeric values in z")
+  # if(any(!is.finite(w))) stop("Non-numeric values in w")
+  # if(any(!is.finite(x_control))) stop("Non-numeric values in x_control")
+  # if(any(!is.finite(x_moderate))) stop("Non-numeric values in x_moderate")
+  # if(any(!is.finite(pihat))) stop("Non-numeric values in pihat")
+  # if(!all(sort(unique(z)) == c(0,1))) stop("z must be a vector of 0's and 1's, with at least one of each")
 
-  if(length(unique(y))<5) warning("y appears to be discrete")
+  # if(length(unique(y))<5) warning("y appears to be discrete")
 
-  if(nburn<0) stop("nburn must be positive")
-  if(nsim<0) stop("nsim must be positive")
-  if(nthin<0) stop("nthin must be positive")
-  if(nthin>nsim+1) stop("nthin must be < nsim")
-  if(nburn<1000) warning("A low (<1000) value for nburn was supplied")
-  if(nsim*nburn<1000) warning("A low (<1000) value for total iterations after burn-in was supplied")
+  # if(nburn<0) stop("nburn must be positive")
+  # if(nsim<0) stop("nsim must be positive")
+  # if(nthin<0) stop("nthin must be positive")
+  # if(nthin>nsim+1) stop("nthin must be < nsim")
+  # if(nburn<1000) warning("A low (<1000) value for nburn was supplied")
+  # if(nsim*nburn<1000) warning("A low (<1000) value for total iterations after burn-in was supplied")
 
   ### TODO range check on parameters
 
   ###
-  x_c = matrix(x_control, ncol=ncol(x_control))
-  x_m = matrix(x_moderate, ncol=ncol(x_moderate))
+  if(is.null(x_c)){
+    return_sort_index = TRUE
 
-  if(include_pi=="both" | include_pi=="control") {
-    x_c = cbind(x_control, pihat)
+    x_c = matrix(x_control, ncol=ncol(x_control))
+    if(include_pi=="both" | include_pi=="control") {
+      x_c = cbind(pihat, x_control)
+    }
+  }else{
+    return_sort_index = FALSE
   }
-  if(include_pi=="both" | include_pi=="moderate") {
-    x_m = cbind(x_moderate, pihat)
+
+  if(is.null(x_m)){
+    x_m = matrix(x_moderate, ncol=ncol(x_moderate))
+    if(include_pi=="both" | include_pi=="moderate") {
+      x_m = cbind(pihat, x_moderate)
+    }
   }
-  cutpoint_list_c = lapply(1:ncol(x_c), function(i) .cp_quantile(x_c[,i]))
-  cutpoint_list_m = lapply(1:ncol(x_m), function(i) .cp_quantile(x_m[,i]))
+
+  if(is.null(cutpoint_list_c)){
+    cutpoint_list_c = lapply(1:ncol(x_c), function(i) .cp_quantile(x_c[,i]))
+  }
+
+  if(is.null(cutpoint_list_m)){
+    cutpoint_list_m = lapply(1:ncol(x_m), function(i) .cp_quantile(x_m[,i]))
+  }
 
   sdy = sqrt(Hmisc::wtd.var(y, w))
   muy = stats::weighted.mean(y, w)
@@ -115,7 +134,10 @@ bcf_ini <- function(y, z, x_control, x_moderate=x_control, pihat, w = NULL,
     
     print(tree_files)
 
-    fitbcf = bcfoverparRcppClean_ini(y_ = yscale[perm], z_ = z[perm], w_ = w[perm],
+    fitbcf = bcfoverparRcppClean_ini(
+      ini_bcf, treedraws_con, treedraws_mod, muscale_ini, bscale0_ini, bscale1_ini, sigma_ini, pi_con_tau, pi_con_sigma,
+                        pi_mod_tau, pi_mod_sigma, mod_tree_scaling,
+                                 y_ = yscale[perm], z_ = z[perm], w_ = w[perm],
                                  x_con_ = t(x_c[perm,,drop=FALSE]), x_mod_ = t(x_m[perm,,drop=FALSE]), 
                                  x_con_info_list = cutpoint_list_c, 
                                  x_mod_info_list = cutpoint_list_m,
@@ -136,7 +158,7 @@ bcf_ini <- function(y, z, x_control, x_moderate=x_control, pihat, w = NULL,
                                  treef_mod_name_ = tree_files$mod_trees, 
                                  status_interval = update_interval,
                                  use_mscale = use_muscale, use_bscale = use_tauscale, 
-                                 b_half_normal = TRUE, verbose_sigma=verbose)
+                                 b_half_normal = TRUE, verbose_sigma=verbose, update_mu_loading_tree = update_mu_loading_tree, trt_init = 1.0)
     
     cat("bcfoverparRcppClean returned to R\n")
 

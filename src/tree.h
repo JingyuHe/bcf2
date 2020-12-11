@@ -138,8 +138,10 @@ public:
    void setm(double mu) {this->mu=mu;}
    void setv(size_t v) {this->v = v;}
    void setc(size_t c) {this->c = c;}
+   void setc_value(double c_value) {this->c_value = c_value;}
    //get----------
    double getm() const {return mu;} 
+   double getc_value() const {return c_value;}
    size_t getv() const {return v;}
    size_t getc() const {return c;}
    tree_p getp() const {return p;}  //should this be tree_cp? 
@@ -200,6 +202,7 @@ private:
    //rule: left if x[v] < xinfo[v][c]
    size_t v; 
    size_t c; 
+   double c_value;
    //------------------------------
    //tree structure
    tree_p p; //parent
