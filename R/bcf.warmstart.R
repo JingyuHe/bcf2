@@ -215,11 +215,10 @@ bcf.warmstart <- function(
   ###
   n_sweeps = warm_start_fit$model_params$n_sweeps
   n_burnin = warm_start_fit$model_params$n_burnin
-  pi_con_tau = warm_start_fit$model_params$tau_con
-  pi_mod_tau = warm_start_fit$model_params$tau_mod
+  pi_con_tau = sqrt(warm_start_fit$model_params$tau_con)
+  pi_mod_tau = sqrt(warm_start_fit$model_params$tau_mod)
   ntree_control = warm_start_fit$model_params$n_trees_con
   ntree_moderate = warm_start_fit$model_params$n_trees_mod
-    
   include_pi = warm_start_fit$model_params$pihat_status
   
   x_c = matrix(x_control, ncol=ncol(x_control))
@@ -306,7 +305,7 @@ bcf.warmstart <- function(
   }
  
   if(verbose){
-    cat("Loop complete, back to R.")
+    cat("Loop complete, back to R.\n")
   }
   
   ## parallel clean-up
