@@ -257,11 +257,13 @@ bcf_ini <- function(treedraws_con, treedraws_mod, muscale_ini, bscale0_ini, bsca
   }
 
   if(is.null(cutpoint_list_c)){
-    cutpoint_list_c = lapply(1:ncol(x_c), function(i) .cp_quantile(x_c[,i]))
+    #cutpoint_list_c = lapply(1:ncol(x_c), function(i) .cp_quantile(x_c[,i]))
+    cutpoint_list_c = lapply(1:ncol(x_c), function(i) .cp_list(x_c[,i]))
   }
 
   if(is.null(cutpoint_list_m)){
-    cutpoint_list_m = lapply(1:ncol(x_m), function(i) .cp_quantile(x_m[,i]))
+    #cutpoint_list_m = lapply(1:ncol(x_m), function(i) .cp_quantile(x_m[,i]))
+    cutpoint_list_m = lapply(1:ncol(x_m), function(i) .cp_list(x_m[,i]))
   }
 
   sdy = sqrt(Hmisc::wtd.var(y, w))

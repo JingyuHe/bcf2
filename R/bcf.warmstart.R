@@ -10,24 +10,16 @@
 #   return( all( out ) )
 # }
 # 
-# .cp_quantile = function(x, num=10, cat_levels=8){
-#   nobs = length(x)
-#   nuniq = length(unique(x))
-# 
-#   if(nuniq==1) {
-#     ret = x[1]
-#     warning("A supplied covariate contains a single distinct value.")
-#   } else if(nuniq < cat_levels) {
-#     xx = sort(unique(x))
-#     ret = xx[-length(xx)] + diff(xx)/2
-#   } else {
-#     q = approxfun(sort(x),quantile(x,p = 0:(nobs-1)/nobs))
-#     ind = seq(min(x),max(x),length.out=num)
-#     ret = q(ind)
-#   }
-# 
-#   return(ret)
-# }
+
+.comb <- function(x, ...) {
+  lapply(seq_along(x),
+         function(i) c(x[[i]], lapply(list(...), function(y) y[[i]])))
+}
+
+.cp_list= function(x){
+  ret <- sort(unique(x))[-1]
+  return(ret)
+}
 
 #' Fit Bayesian Causal Forests
 #'
@@ -210,8 +202,6 @@ bcf.warmstart <- function(
   ###
   n_sweeps = warm_start_fit$model_params$n_sweeps
   n_burnin = warm_start_fit$model_params$n_burnin
-  pi_con_tau = sqrt(warm_start_fit$model_params$tau_con)
-  pi_mod_tau = sqrt(warm_start_fit$model_params$tau_mod)
   ntree_control = warm_start_fit$model_params$n_trees_con
   ntree_moderate = warm_start_fit$model_params$n_trees_mod
   include_pi = warm_start_fit$model_params$pihat_status
@@ -226,9 +216,9 @@ bcf.warmstart <- function(
     x_m = cbind(pihat, x_moderate)
   }
 
-  cutpoint_list_c = lapply(1:ncol(x_c), function(i) .cp_quantile(x_c[,i], num = nrow(x_m)))
+  cutpoint_list_c = lapply(1:ncol(x_c), function(i) .cp_list(x_c[,i]))
 
-  cutpoint_list_m = lapply(1:ncol(x_m), function(i) .cp_quantile(x_m[,i], num = nrow(x_m)))
+  cutpoint_list_m = lapply(1:ncol(x_m), function(i) .cp_list(x_m[,i]))
 
   sdy = sqrt(Hmisc::wtd.var(y, w))
   muy = stats::weighted.mean(y, w)
@@ -257,48 +247,50 @@ bcf.warmstart <- function(
   }
   n_chains <- n_sweeps - n_burnin
   
-  chain_out <- foreach::foreach(chain_num=1:n_chains) %dopar% {
-  #chain_num <- 1
-  i <- n_burnin + chain_num
+  out <- foreach::foreach(chain_num=1:n_chains,
+                                .combine='.comb', .multicombine=TRUE, .init=list(list(), list())) %dopar% {
+    #chain_num <- 1
+    i <- n_burnin + chain_num
+    
+    bscale0_ini = warm_start_fit$b[i, 1]
+    bscale1_ini = warm_start_fit$b[i, 2]
+    #sigma_ini = warm_start_fit$sigma0_draws[(ntree_control+ntree_moderate),i]
+    
+    treedraws_con = as.vector(warm_start_fit$tree_string_con[i])
+    treedraws_mod = as.vector(warm_start_fit$tree_string_mod[i])
+    muscale_ini = warm_start_fit$a[i, 1]
+    
+    sigma_ini = warm_start_fit$sigma0[ntree_control,i]
+    pi_con_sigma_ini = warm_start_fit$sigma0[ntree_control,i] / warm_start_fit$a[i, 1]
+    pi_mod_sigma_ini = warm_start_fit$sigma0[ntree_control,i]
+    pi_con_tau = sqrt(warm_start_fit$tau_con[i, 1])
+    pi_mod_tau = sqrt(warm_start_fit$tau_mod[i, 1])
+    mod_tree_scaling = 1
+    ini_bcf = FALSE
+    
+    fitbcf = bcfoverparRcppClean_ini( ini_bcf, treedraws_con, treedraws_mod, muscale_ini, bscale0_ini, bscale1_ini, 
+                                      sigma_ini, pi_con_tau, pi_con_sigma_ini, pi_mod_tau, pi_mod_sigma_ini, mod_tree_scaling,
+                                      yscale[perm], z[perm], w[perm],
+                                      t(x_c[perm,]), t(x_m[perm,,drop=FALSE]), t(x_m[1,,drop=FALSE]),
+                                      cutpoint_list_c, cutpoint_list_m,
+                                      random_des = matrix(1),
+                                      random_var = matrix(1),
+                                      random_var_ix = matrix(1),
+                                      random_var_df = 3,
+                                      nburn, nsim, nthin,
+                                      ntree_moderate, ntree_control, lambda, nu,
+                                      con_sd = ifelse(abs(2*sdy - sd_control)<1e-6, 2, sd_control/sdy),
+                                      mod_sd = ifelse(abs(sdy - sd_moderate)<1e-6, 1, sd_moderate/sdy)/ifelse(use_tauscale,0.674,1), # if HN make sd_moderate the prior median
+                                      base_control, power_control, base_moderate, power_moderate,
+                                      "tmp", status_interval = update_interval, randeff = randeff,
+                                      use_mscale = use_muscale, use_bscale = use_tauscale, b_half_normal = TRUE, update_mu_loading_tree = update_mu_loading_tree, trt_init = 1.0, verbose = verbose)
   
-  bscale0_ini = warm_start_fit$b[i, 1]
-  bscale1_ini = warm_start_fit$b[i, 2]
-  #sigma_ini = warm_start_fit$sigma0_draws[(ntree_control+ntree_moderate),i]
   
-  treedraws_con = as.vector(warm_start_fit$tree_string_con[i])
-  treedraws_mod = as.vector(warm_start_fit$tree_string_mod[i])
-  muscale_ini = warm_start_fit$a[i, 1]
-  
-  sigma_ini = warm_start_fit$sigma0[2,i]
-  #pi_con_tau = sqrt(tau1)
-  pi_con_sigma_ini = warm_start_fit$sigma0[2,i] / warm_start_fit$a[i, 1]
-  #pi_mod_tau = sqrt(tau2),
-  pi_mod_sigma_ini = warm_start_fit$sigma0[2,i]
-  mod_tree_scaling = 1
-  ini_bcf = FALSE
-  
-  fitbcf = bcfoverparRcppClean_ini( ini_bcf, treedraws_con, treedraws_mod, muscale_ini, bscale0_ini, bscale1_ini, 
-                                    sigma_ini, pi_con_tau, pi_con_sigma_ini, pi_mod_tau, pi_mod_sigma_ini, mod_tree_scaling,
-                                    yscale[perm], z[perm], w[perm],
-                                    t(x_c[perm,]), t(x_m[perm,,drop=FALSE]), t(x_m[1,,drop=FALSE]),
-                                    cutpoint_list_c, cutpoint_list_m,
-                                    random_des = matrix(1),
-                                    random_var = matrix(1),
-                                    random_var_ix = matrix(1),
-                                    random_var_df = 3,
-                                    nburn, nsim, nthin,
-                                    ntree_moderate, ntree_control, lambda, nu,
-                                    con_sd = ifelse(abs(2*sdy - sd_control)<1e-6, 2, sd_control/sdy),
-                                    mod_sd = ifelse(abs(sdy - sd_moderate)<1e-6, 1, sd_moderate/sdy)/ifelse(use_tauscale,0.674,1), # if HN make sd_moderate the prior median
-                                    base_control, power_control, base_moderate, power_moderate,
-                                    "tmp", status_interval = update_interval, randeff = randeff,
-                                    use_mscale = use_muscale, use_bscale = use_tauscale, b_half_normal = TRUE, update_mu_loading_tree = update_mu_loading_tree, trt_init = 1.0, verbose = verbose)
-
-
-  chainout <- list(tauhat = sdy*fitbcf$b_post[,order(perm)],
-       yhat = muy + sdy*fitbcf$yhat_post[,order(perm)])
+    return(list(t(sdy*fitbcf$b_post[,order(perm)]),   
+                t(muy + sdy*fitbcf$yhat_post[,order(perm)])
+                     )
+          )
   }
- 
   if(verbose){
     cat("Loop complete, back to R.\n")
   }
@@ -306,19 +298,22 @@ bcf.warmstart <- function(
   ## parallel clean-up
   parallel::stopCluster(cl)
   
-  yhat_total = c()
-  tauhat_total = c()
+  # yhat_total = c()
+  # tauhat_total = c()
+  # 
+  # for (num_chain in 1:n_chains){
+  #   yhat_total = rbind(yhat_total, chain_out[[num_chain]]$yhat)
+  #   tauhat_total = rbind(tauhat_total, chain_out[[num_chain]]$tauhat)
+  #   chain_out[[num_chain]] <- c(0)
+  # }
+  # 
+  # output <- list(tauhat = t(tauhat_total),
+  #                yhat = t(yhat_total)
+  #                )
   
-  for (num_chain in 1:n_chains){
-    yhat_total = rbind(yhat_total, chain_out[[num_chain]]$yhat)
-    tauhat_total = rbind(tauhat_total, chain_out[[num_chain]]$tauhat)
-    chain_out[[num_chain]] <- c(0)
-  }
-  
-  output <- list(tauhat = t(tauhat_total),
-                 yhat = t(yhat_total)
-                 )
-  
+  return(list(tauhat = matrix(unlist(out[[1]]), nrow = length(y), byrow = FALSE),
+              yhat = matrix(unlist(out[[2]]), nrow = length(y), byrow = FALSE)
+  ))
 }
 
 #' @export

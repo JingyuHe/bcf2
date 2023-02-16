@@ -12,7 +12,7 @@ using Rcpp::Rcout;
 double pn(double x, double m, double v)
 {
 	double dif = x-m;
-	return exp(-.5*dif*dif/v)/sqrt(2*PI*v);
+	return exp(-.5*dif*dif/v)/sqrt(2*M_PI*v);
 }
 //--------------------------------------------------
 // draw from discrete distribution given by p, return index
@@ -465,7 +465,7 @@ void getsuff(tree& x, tree::tree_cp nx, size_t v, size_t c, xinfo& xi, dinfo& di
 		xx = di.x + i*di.p;
 		if(nx==x.bn(xx,xi)) { //does the bottom node = xx's bottom node
 			y = di.y[i];
-			if(xx[v] < xi[v][c]) {
+			if(xx[v] <= xi[v][c]) {
         		sl.n0 += 1;
 				sl.n += phi[i];
 				sl.sy += phi[i]*y;
