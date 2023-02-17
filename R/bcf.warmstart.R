@@ -17,7 +17,14 @@
 }
 
 .cp_list= function(x){
-  ret <- sort(unique(x))[-1]
+  if(length(unique(x)==1)) {
+    ret = x[1]
+    warning("A supplied covariate contains a single distinct value.")
+  } else if(identical(sort(unique(x)),c(0,1))) {
+    ret <- 0.5
+  } else {
+    ret <- sort(unique(x))[-1]
+    }
   return(ret)
 }
 
@@ -156,46 +163,7 @@ bcf.warmstart <- function(
     }
 
   pihat = as.matrix(pihat)
-  # if(!.ident(length(y),
-  #            length(z),
-  #            length(w),
-  #            nrow(x_control),
-  #            nrow(x_moderate),
-  #            nrow(pihat))
-  #   ) {
-  #   stop("Data size mismatch. The following should all be equal:
-  #        length(y): ", length(y), "\n",
-  #        "length(z): ", length(z), "\n",
-  #        "length(w): ", length(w), "\n",
-  #        "nrow(x_control): ", nrow(x_control), "\n",
-  #        "nrow(x_moderate): ", nrow(x_moderate), "\n",
-  #        "nrow(pihat): ", nrow(pihat),"\n"
-  #   )
-  # }
 
-  # if(any(is.na(y))) stop("Missing values in y")
-  # if(any(is.na(z))) stop("Missing values in z")
-  # if(any(is.na(w))) stop("Missing values in w")
-  # if(any(is.na(x_control))) stop("Missing values in x_control")
-  # if(any(is.na(x_moderate))) stop("Missing values in x_moderate")
-  # if(any(is.na(pihat))) stop("Missing values in pihat")
-
-  # if(any(!is.finite(y))) stop("Non-numeric values in y")
-  # if(any(!is.finite(z))) stop("Non-numeric values in z")
-  # if(any(!is.finite(w))) stop("Non-numeric values in w")
-  # if(any(!is.finite(x_control))) stop("Non-numeric values in x_control")
-  # if(any(!is.finite(x_moderate))) stop("Non-numeric values in x_moderate")
-  # if(any(!is.finite(pihat))) stop("Non-numeric values in pihat")
-
-  # if(!all(sort(unique(z)) == c(0,1))) stop("z must be a vector of 0's and 1's, with at least one of each")
-
-  # if(length(unique(y))<5) warning("y appears to be discrete")
-
-  # if(nburn<0) stop("nburn must be positive")
-  # if(nsim<0) stop("nsim must be positive")
-  # if(nthin<0) stop("nthin must be positive")
-  # if(nthin>nsim+1) stop("nthin must be < nsim")
-  # if(nburn<100) warning("A low (<100) value for nburn was supplied")
 
   ### TODO range check on parameters
 
@@ -248,7 +216,8 @@ bcf.warmstart <- function(
   n_chains <- n_sweeps - n_burnin
   
   out <- foreach::foreach(chain_num=1:n_chains,
-                                .combine='.comb', .multicombine=TRUE, .init=list(list(), list())) %dopar% {
+                                #.combine='.comb', .multicombine=TRUE, .init=list(list(), list())) %dopar% {
+                                .combine='.comb', .multicombine=TRUE, .init=list(list())) %dopar% {
     #chain_num <- 1
     i <- n_burnin + chain_num
     
@@ -286,11 +255,12 @@ bcf.warmstart <- function(
                                       use_mscale = use_muscale, use_bscale = use_tauscale, b_half_normal = TRUE, update_mu_loading_tree = update_mu_loading_tree, trt_init = 1.0, verbose = verbose)
   
   
-    return(list(t(sdy*fitbcf$b_post[,order(perm)]),   
-                t(muy + sdy*fitbcf$yhat_post[,order(perm)])
+    return(list(t(sdy*fitbcf$b_post[,order(perm)])#,   
+                #t(muy + sdy*fitbcf$yhat_post[,order(perm)])
                      )
           )
-  }
+                                }
+  
   if(verbose){
     cat("Loop complete, back to R.\n")
   }
@@ -298,21 +268,8 @@ bcf.warmstart <- function(
   ## parallel clean-up
   parallel::stopCluster(cl)
   
-  # yhat_total = c()
-  # tauhat_total = c()
-  # 
-  # for (num_chain in 1:n_chains){
-  #   yhat_total = rbind(yhat_total, chain_out[[num_chain]]$yhat)
-  #   tauhat_total = rbind(tauhat_total, chain_out[[num_chain]]$tauhat)
-  #   chain_out[[num_chain]] <- c(0)
-  # }
-  # 
-  # output <- list(tauhat = t(tauhat_total),
-  #                yhat = t(yhat_total)
-  #                )
-  
-  return(list(tauhat = matrix(unlist(out[[1]]), nrow = length(y), byrow = FALSE),
-              yhat = matrix(unlist(out[[2]]), nrow = length(y), byrow = FALSE)
+  return(list(tauhat = matrix(unlist(out[[1]]), nrow = length(y), byrow = FALSE)#,
+              #yhat = matrix(unlist(out[[2]]), nrow = length(y), byrow = FALSE)
   ))
 }
 
