@@ -17,7 +17,7 @@
 }
 
 .cp_list= function(x){
-  if(length(unique(x)==1)) {
+  if(length(unique(x)) == 1) {
     ret = x[1]
     warning("A supplied covariate contains a single distinct value.")
   } else if(identical(sort(unique(x)),c(0,1))) {
