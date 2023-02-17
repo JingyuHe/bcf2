@@ -216,9 +216,8 @@ bcf.warmstart <- function(
   n_chains <- n_sweeps - n_burnin
   
   out <- foreach::foreach(chain_num=1:n_chains,
-                                #.combine='.comb', .multicombine=TRUE, .init=list(list(), list())) %dopar% {
-                                .combine='.comb', .multicombine=TRUE, .init=list(list())) %dopar% {
-    #chain_num <- 1
+                                .combine='.comb', .multicombine=TRUE, .init=list(list(), list())) %dopar% {
+
     i <- n_burnin + chain_num
     
     bscale0_ini = warm_start_fit$b[i, 1]
@@ -255,8 +254,8 @@ bcf.warmstart <- function(
                                       use_mscale = use_muscale, use_bscale = use_tauscale, b_half_normal = TRUE, update_mu_loading_tree = update_mu_loading_tree, trt_init = 1.0, verbose = verbose)
   
   
-    return(list(t(sdy*fitbcf$b_post[,order(perm)])#,   
-                #t(muy + sdy*fitbcf$yhat_post[,order(perm)])
+    return(list(t(sdy*fitbcf$b_post[,order(perm)]),   
+                t(muy + sdy*fitbcf$yhat_post[,order(perm)])
                      )
           )
                                 }
@@ -268,8 +267,8 @@ bcf.warmstart <- function(
   ## parallel clean-up
   parallel::stopCluster(cl)
   
-  return(list(tauhat = matrix(unlist(out[[1]]), nrow = length(y), byrow = FALSE)#,
-              #yhat = matrix(unlist(out[[2]]), nrow = length(y), byrow = FALSE)
+  return(list(tauhat = matrix(unlist(out[[1]]), nrow = length(y), byrow = FALSE),
+              yhat = matrix(unlist(out[[2]]), nrow = length(y), byrow = FALSE)
   ))
 }
 
