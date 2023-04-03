@@ -9,7 +9,7 @@
 #   }
 #   return( all( out ) )
 # }
-# 
+#
 
 .comb <- function(x, ...) {
   lapply(seq_along(x),
@@ -82,6 +82,9 @@
 #' @param use_tauscale Use a half-Normal prior on the scale of tau.
 #' @param n_cores An optional integer of the number of cores to run your warm start-BCF.
 #' @param warm_start_fit An XBCF fit object, that will be used to initialize warm start-BCF.
+#' @param cutpoint_grid The scheme for cutpoint grid generation:
+#' "unifrom" [default] option generates a unifromly distributed cutpoint grid for each continuous variable (size is 10*number of observations);
+#' "exact" option uses sets of unique values at each categorical or continuous variable as availible cutpoints.
 #' @return A list with elements
 #' \item{tau}{\code{nsim} by \code{n} matrix of posterior samples of individual treatment effects}
 #' \item{mu}{\code{nsim} by \code{n} matrix of posterior samples of individual treatment effects}
@@ -145,7 +148,7 @@ bcf.warmstart <- function(
                 power_moderate = 3,
                 nu = 3, lambda = NULL, sigq = .9, sighat = NULL, randeff = FALSE,
                 include_pi = "control", use_muscale=TRUE, use_tauscale=TRUE, ini_bcf = FALSE, update_mu_loading_tree = FALSE,
-                verbose = FALSE,n_cores = NULL, warm_start_fit = NULL
+                verbose = FALSE,n_cores = NULL, warm_start_fit = NULL, cutpoint_grid = 'uniform'
 ) {
   if (is.null(warm_start_fit)) {
     stop("bcf.warmstart requires an XBCF fit object for initialization. Stopping.")
@@ -153,11 +156,14 @@ bcf.warmstart <- function(
   if (class(warm_start_fit) != "XBCFdiscrete") {
     stop("bcf.warmstart can only be initialized with an object of class XBCF. Stopping.")
   }
+  if (!(cutpoint_grid == 'uniform' || cutpoint_grid == 'exact')) {
+    stop("Invalid input: cutpoint_grid should be either 'unifrom' or 'exact'. Stopping.")
+  }
   if (is.null(n_cores)) {
     n_cores <- 2
     warning("n_cores is not provided. Using 2 as default for parallelization.")
   }
-  
+
   if(is.null(w)){
     w <- matrix(1, ncol = 1, nrow = length(y))
     }
@@ -173,7 +179,7 @@ bcf.warmstart <- function(
   ntree_control = warm_start_fit$model_params$n_trees_con
   ntree_moderate = warm_start_fit$model_params$n_trees_mod
   include_pi = warm_start_fit$model_params$pihat_status
-  
+
   x_c = matrix(x_control, ncol=ncol(x_control))
   if(include_pi=="both" | include_pi=="control") {
     x_c = cbind(pihat, x_control)
@@ -184,9 +190,13 @@ bcf.warmstart <- function(
     x_m = cbind(pihat, x_moderate)
   }
 
-  cutpoint_list_c = lapply(1:ncol(x_c), function(i) .cp_list(x_c[,i]))
-
-  cutpoint_list_m = lapply(1:ncol(x_m), function(i) .cp_list(x_m[,i]))
+  if(cutpoint_grid == "exact") {
+    cutpoint_list_c = lapply(1:ncol(x_c), function(i) .cp_list(x_c[,i]))
+    cutpoint_list_m = lapply(1:ncol(x_m), function(i) .cp_list(x_m[,i]))
+  } else {
+    cutpoint_list_c = lapply(1:ncol(x_c), function(i) .cp_quantile(x_c[,i], num = 10*nrow(x_c)))
+    cutpoint_list_m = lapply(1:ncol(x_m), function(i) .cp_quantile(x_m[,i], num = 10*nrow(x_m)))
+  }
 
   sdy = sqrt(Hmisc::wtd.var(y, w))
   muy = stats::weighted.mean(y, w)
@@ -204,30 +214,30 @@ bcf.warmstart <- function(
   perm = order(z, decreasing=TRUE)
 
   ## parameter matching
-  
-  
+
+
   ## set up parallel
   cl <- parallel::makeCluster(n_cores)
   doParallel::registerDoParallel(cl)
-  
+
   if(verbose){
     cat(paste0("Calling bcfoverparRcppClean_ini from R in parallel on ", n_cores, " cores.\n"))
   }
   n_chains <- n_sweeps - n_burnin
-  
+
   out <- foreach::foreach(chain_num=1:n_chains,
                                 .combine='.comb', .multicombine=TRUE, .init=list(list(), list())) %dopar% {
 
     i <- n_burnin + chain_num
-    
+
     bscale0_ini = warm_start_fit$b[i, 1]
     bscale1_ini = warm_start_fit$b[i, 2]
     #sigma_ini = warm_start_fit$sigma0_draws[(ntree_control+ntree_moderate),i]
-    
+
     treedraws_con = as.vector(warm_start_fit$tree_string_con[i])
     treedraws_mod = as.vector(warm_start_fit$tree_string_mod[i])
     muscale_ini = warm_start_fit$a[i, 1]
-    
+
     sigma_ini = warm_start_fit$sigma0[ntree_control,i]
     pi_con_sigma_ini = warm_start_fit$sigma0[ntree_control,i] / warm_start_fit$a[i, 1]
     pi_mod_sigma_ini = warm_start_fit$sigma0[ntree_control,i]
@@ -235,8 +245,8 @@ bcf.warmstart <- function(
     pi_mod_tau = sqrt(warm_start_fit$tau_mod[i, 1])
     mod_tree_scaling = 1
     ini_bcf = FALSE
-    
-    fitbcf = bcfoverparRcppClean_ini( ini_bcf, treedraws_con, treedraws_mod, muscale_ini, bscale0_ini, bscale1_ini, 
+
+    fitbcf = bcfoverparRcppClean_ini( ini_bcf, treedraws_con, treedraws_mod, muscale_ini, bscale0_ini, bscale1_ini,
                                       sigma_ini, pi_con_tau, pi_con_sigma_ini, pi_mod_tau, pi_mod_sigma_ini, mod_tree_scaling,
                                       yscale[perm], z[perm], w[perm],
                                       t(x_c[perm,]), t(x_m[perm,,drop=FALSE]), t(x_m[1,,drop=FALSE]),
@@ -252,21 +262,21 @@ bcf.warmstart <- function(
                                       base_control, power_control, base_moderate, power_moderate,
                                       "tmp", status_interval = update_interval, randeff = randeff,
                                       use_mscale = use_muscale, use_bscale = use_tauscale, b_half_normal = TRUE, update_mu_loading_tree = update_mu_loading_tree, trt_init = 1.0, verbose = verbose)
-  
-  
-    return(list(t(sdy*fitbcf$b_post[,order(perm)]),   
+
+
+    return(list(t(sdy*fitbcf$b_post[,order(perm)]),
                 t(muy + sdy*fitbcf$yhat_post[,order(perm)])
                      )
           )
                                 }
-  
+
   if(verbose){
     cat("Loop complete, back to R.\n")
   }
-  
+
   ## parallel clean-up
   parallel::stopCluster(cl)
-  
+
   return(list(tauhat = matrix(unlist(out[[1]]), nrow = length(y), byrow = FALSE),
               yhat = matrix(unlist(out[[2]]), nrow = length(y), byrow = FALSE)
   ))

@@ -152,7 +152,7 @@ for(dgp.number in dgp)
     fit_warmstart <- bcf2::bcf.warmstart(y = y, z = z, x_control = x.mod, x_moderate = x.mod, pihat = pihat,
                                          nburn=burnin_warmstart, nsim=n_draw_warmstart, include_pi = 'control',
                                          use_tauscale = TRUE, ntree_control = treesmu, ntree_moderate = treestau, ini_bcf = FALSE,
-                                         verbose = FALSE, n_cores = n_cores, warm_start_fit = xbcf_fit
+                                         verbose = FALSE, n_cores = n_cores, warm_start_fit = xbcf_fit, cutpoint_grid = 'uniform'
     )
 
     t.ws <- proc.time() - t.ws # end time tracking for warmstart
