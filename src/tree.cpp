@@ -93,53 +93,59 @@ std::ostream& operator<<(std::ostream& os, const tree& t)
 // 	}
 // 	return is;
 // }
+
 std::istream& operator>>(std::istream& is, tree& t)
 {
-	size_t tid,pid;                     //tid: id of current node, pid: parent's id
-	std::map<size_t,tree::tree_p> pts;  //pointers to nodes indexed by node id
-	size_t nn;                          //number of nodes
+  size_t tid,pid;                     //tid: id of current node, pid: parent's id
+  std::map<size_t,tree::tree_p> pts;  //pointers to nodes indexed by node id
+  size_t theta_size, nn;              //number of nodes
 
-	t.tonull(); // obliterate old tree (if there)
+  t.tonull(); // obliterate old tree (if there)
 
-	//read number of nodes----------
-	is >> nn;
-	if(!is) {
-		Rcpp::Rcout << ">> error: unable to read number of nodes" << endl;
-		return is;
-	}
+  //read number of nodes----------
+  is >> theta_size;
+  is >> nn;
+  if(!is) {
+    Rcpp::Rcout << ">> error: unable to read number of nodes" << endl;
+    return is;
+  }
 
-	//read in vector of node information----------
-	std::vector<node_info> nv(nn);
-	for(size_t i=0;i!=nn;i++) {
-		is >> nv[i].id >> nv[i].v >> nv[i].c >> nv[i].c_value >> nv[i].m;
-		if(!is) {
-		  Rcpp::Rcout << ">> error: unable to read node info, on node  " << i+1 << endl;
-			return is;
-		}
-	}
+  //read in vector of node information----------
+  std::vector<node_info> nv(nn);
+  for(size_t i=0;i!=nn;i++) {
+    // is >> nv[i].id >> nv[i].v >> nv[i].c >> nv[i].c_value >> nv[i].m;
+    is >> nv[i].id >> nv[i].v >> nv[i].c_value >> nv[i].m;
+    if(!is) {
+      Rcpp::Rcout << ">> error: unable to read node info, on node  " << i+1 << endl;
+      return is;
+    }
+  }
 
-	//first node has to be the top one
-	pts[1] = &t; //careful! this is not the first pts, it is pointer of id 1.
-	t.setv(nv[0].v); t.setc_value(nv[0].c_value); t.setm(nv[0].m); t.setc(nv[0].c);
-	t.p=0;
+  //first node has to be the top one
+  pts[1] = &t; //careful! this is not the first pts, it is pointer of id 1.
+  // t.setv(nv[0].v); t.setc_value(nv[0].c_value); t.setm(nv[0].m); t.setc(nv[0].c);
+  t.setv(nv[0].v); t.setc_value(nv[0].c_value); t.setm(nv[0].m);
+  t.p=0;
 
-	//now loop through the rest of the nodes knowing parent is already there.
-	for(size_t i=1;i!=nv.size();i++) {
-		tree::tree_p np = new tree;
-		np->v = nv[i].v; np->c_value=nv[i].c_value; np->mu=nv[i].m; np->c = nv[i].c;
-		tid = nv[i].id;
-		pts[tid] = np;
-		pid = tid/2;
-		// set pointers
-		if(tid % 2 == 0) { //left child has even id
-			pts[pid]->l = np;
-		} else {
-			pts[pid]->r = np;
-		}
-		np->p = pts[pid];
-	}
-	return is;
+  //now loop through the rest of the nodes knowing parent is already there.
+  for(size_t i=1;i!=nv.size();i++) {
+    tree::tree_p np = new tree;
+    // np->v = nv[i].v; np->c_value=nv[i].c_value; np->mu=nv[i].m; np->c = nv[i].c;
+    np->v = nv[i].v; np->c_value=nv[i].c_value; np->mu=nv[i].m;
+    tid = nv[i].id;
+    pts[tid] = np;
+    pid = tid/2;
+    // set pointers
+    if(tid % 2 == 0) { //left child has even id
+      pts[pid]->l = np;
+    } else {
+      pts[pid]->r = np;
+    }
+    np->p = pts[pid];
+  }
+  return is;
 }
+
 
 //--------------------
 // Output operator for cutpoint info xi
@@ -200,8 +206,8 @@ std::istream& operator>>(std::istream& is, xinfo& xi)
 // };
 
 // x is a pionter to a feature vector
-// xi is a Node 
-// if the v'th value of x is less than cut point 
+// xi is a Node
+// if the v'th value of x is less than cut point
 
 //tree structure
 //    tree_p p; //parent

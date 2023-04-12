@@ -52,6 +52,8 @@ List bcfoverparRcppClean_ini(bool ini_bcf, SEXP treedraws_con, SEXP treedraws_mo
     //     randeff = false;
     // }
 
+    double EPS = 1e-07;
+
     if(verbose){
         if (randeff)
         {
@@ -200,160 +202,142 @@ List bcfoverparRcppClean_ini(bool ini_bcf, SEXP treedraws_con, SEXP treedraws_mo
 
     // cout << "before loading trees " << endl;
     // load trees
-    Rcpp::CharacterVector itrees_con(Rcpp::wrap(treedraws_con));
-    Rcpp::CharacterVector itrees_mod(Rcpp::wrap(treedraws_mod));
+  Rcpp::CharacterVector itrees_con(Rcpp::wrap(treedraws_con));
+  Rcpp::CharacterVector itrees_mod(Rcpp::wrap(treedraws_mod));
 
-    std::string itv_con(itrees_con[0]);
-    std::stringstream ttss_con(itv_con);
-    size_t mm_con, pp_con;
-    ttss_con >> mm_con >> pp_con;
-    std::vector<tree> t_con(mm_con);
-    std::vector<tree::tree_p> temp_node;
-    size_t index_in_full;
-    for (size_t j = 0; j < mm_con; j++)
+  std::string itv_con(itrees_con[0]);
+  std::stringstream ttss_con(itv_con);
+  size_t mm_con, pp_con;
+  ttss_con >> mm_con >> pp_con;
+  std::vector<tree> t_con(mm_con);
+  std::vector<tree::tree_p> temp_node;
+  size_t index_in_full;
+  for (size_t j = 0; j < mm_con; j++)
+  {
+    // load from input trees, cutpoint are raw values
+    ttss_con >> t_con[j];
+
+    // search xinfo matrix in bcf package, find corresponding index of cutpoints
+    temp_node.clear();
+    t_con[j].getnodes(temp_node);
+    // cout << " print some nodes " << endl;
+    // cout << "variable index " << temp_node[0]->getv() << " cutpoint index " << temp_node[0]->getc() << " cutpoint value " << temp_node[0]->getc_value() << endl;
+
+    if (!ini_bcf)
     {
-        // load from input trees, cutpoint are raw values
-        ttss_con >> t_con[j];
+      // if not initialize at BCF
+      // initialize at XBCF
+      // need to figure out indicies of cutpoint in xi matrix
 
-        // search xinfo matrix in bcf package, find corresponding index of cutpoints
-        temp_node.clear();
-        t_con[j].getnodes(temp_node);
-        // cout << " print some nodes " << endl;
-        // cout << "variable index " << temp_node[0]->getv() << " cutpoint index " << temp_node[0]->getc() << " cutpoint value " << temp_node[0]->getc_value() << endl;
-
-        if (!ini_bcf)
+      // cout << "call initialization of XBCF " << endl;
+      for (size_t kk = 0; kk < temp_node.size(); kk++)
+      {
+        if (temp_node[kk]->getl())
         {
-            // if not initialize at BCF
-            // initialize at XBCF
-            // need to figure out indicies of cutpoint in xi matrix
+          // if left / right child exist, it is not a leaf node
 
-            // cout << "call initialization of XBCF " << endl;
-            for (size_t kk = 0; kk < temp_node.size(); kk++)
-            {
-                if (temp_node[kk]->getl())
-                {
-                    // if left / right child exist, it is not a leaf node
-
-                    if (xi_con[temp_node[kk]->getv()].size() == 1)
-                    {
-                        // if there is only one cutpoint candidate (binary variable)
-                        // you have to split at 0.5
-                        // index is 0 and value is 0.5
-                        temp_node[kk]->setc(0);
-                        temp_node[kk]->setc_value(0.5);
-                    }
-                    else
-                    {
-                        index_in_full = 0;
-                        while (xi_con[temp_node[kk]->getv()][index_in_full] < temp_node[kk]->getc_value() && index_in_full <= xi_con[temp_node[kk]->getv()].size())
-                        {
-                            index_in_full++;
-                        }
-
-                        if (index_in_full > xi_con[temp_node[kk]->getv()].size())
-                        {
-                            index_in_full = xi_con[temp_node[kk]->getv()].size() - 1;
-                        }
-                        temp_node[kk]->setc(index_in_full - 1);
-                    }
-                }
+          if (xi_con[temp_node[kk]->getv()].size() == 1)
+          {
+            // if there is only one cutpoint candidate (binary variable)
+            // you have to split at 0.5
+            // index is 0 and value is 0.5
+            temp_node[kk]->setc(0);
+            temp_node[kk]->setc_value(0.5);
+          }
+          else
+          {
+            if (temp_node[kk]->getc_value() < EPS){
+              Rcout << "kk = " << kk << endl;
             }
-        }
 
-        // cout << " print some nodes, after " << endl;
-        // cout << "variable index " << temp_node[0]->getv() << " cutpoint index " << temp_node[0]->getc() << " cutpoint value " << temp_node[0]->getc_value() << endl;
-        // cout << " last cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc() - 1] << " current cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc()] << " next cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc() + 1] << endl;
-        // cout << "---------------------------------" << endl;
+            index_in_full = 0;
+            while (xi_con[temp_node[kk]->getv()][index_in_full] <= temp_node[kk]->getc_value() + EPS && index_in_full <= xi_con[temp_node[kk]->getv()].size())
+            // while (xi_con[temp_node[kk]->getv()][index_in_full] <= temp_node[kk]->getc_value() && index_in_full <= xi_con[temp_node[kk]->getv()].size())
+            {
+              index_in_full++;
+            }
+
+            // // Can't be 0 because BCF uses < cutoffs
+            // if (index_in_full == 0)
+            // {
+            //   index_in_full = 1;
+            // }
+
+            if (index_in_full > xi_con[temp_node[kk]->getv()].size())
+            {
+              index_in_full = xi_con[temp_node[kk]->getv()].size() - 1;
+            }
+            // temp_node[kk]->setc(index_in_full - 1);
+            temp_node[kk]->setc(index_in_full);
+          }
+        }
+      }
     }
 
-    // cout << "load mod trees " << endl;
+    // cout << " print some nodes, after " << endl;
+    // cout << "variable index " << temp_node[0]->getv() << " cutpoint index " << temp_node[0]->getc() << " cutpoint value " << temp_node[0]->getc_value() << endl;
+    // cout << " last cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc() - 1] << " current cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc()] << " next cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc() + 1] << endl;
+    // cout << "---------------------------------" << endl;
+  }
 
-    std::string itv_mod(itrees_mod[0]);
-    std::stringstream ttss_mod(itv_mod);
-    size_t mm_mod, pp_mod;
-    ttss_mod >> mm_mod >> pp_mod;
-    std::vector<tree> t_mod(mm_mod);
-    for (size_t j = 0; j < mm_mod; j++)
+  std::string itv_mod(itrees_mod[0]);
+  std::stringstream ttss_mod(itv_mod);
+  size_t mm_mod, pp_mod;
+  ttss_mod >> mm_mod >> pp_mod;
+  std::vector<tree> t_mod(mm_mod);
+  for (size_t j = 0; j < mm_mod; j++)
+  {
+
+    ttss_mod >> t_mod[j];
+
+    // search xinfo matrix in bcf package, find corresponding index of cutpoints
+    temp_node.clear();
+    t_mod[j].getnodes(temp_node);
+    // cout << " print some nodes " << endl;
+    // cout << "variable index " << temp_node[0]->getv() << " cutpoint index " << temp_node[0]->getc() << " cutpoint value " << temp_node[0]->getc_value() << endl;
+
+    if (!ini_bcf)
     {
-        ttss_mod >> t_mod[j];
+      // cout << "call initialization of XBCF " << endl;
 
-        // search xinfo matrix in bcf package, find corresponding index of cutpoints
-        temp_node.clear();
-        t_mod[j].getnodes(temp_node);
-        // cout << " print some nodes " << endl;
-        // cout << "variable index " << temp_node[0]->getv() << " cutpoint index " << temp_node[0]->getc() << " cutpoint value " << temp_node[0]->getc_value() << endl;
-
-        if (!ini_bcf)
+      for (size_t kk = 0; kk < temp_node.size(); kk++)
+      {
+        if (temp_node[kk]->getl())
         {
-            // cout << "call initialization of XBCF " << endl;
+          // if left / right child exist, it is not a leaf node
 
-            for (size_t kk = 0; kk < temp_node.size(); kk++)
+          if (xi_mod[temp_node[kk]->getv()].size() == 1)
+          {
+            // if there is only one cutpoint candidate (binary variable)
+            // you have to split at 0.5
+            // index is 0 and value is 0.5
+            temp_node[kk]->setc(0);
+            temp_node[kk]->setc_value(0.5);
+          }
+          else
+          {
+            index_in_full = 0;
+            // while (xi_mod[temp_node[kk]->getv()][index_in_full] <= temp_node[kk]->getc_value() && index_in_full <= xi_mod[temp_node[kk]->getv()].size())
+            while (xi_mod[temp_node[kk]->getv()][index_in_full] < temp_node[kk]->getc_value() && index_in_full <= xi_mod[temp_node[kk]->getv()].size())
             {
-                if (temp_node[kk]->getl())
-                {
-                    // if left / right child exist, it is not a leaf node
-
-                    if (xi_mod[temp_node[kk]->getv()].size() == 1)
-                    {
-                        // if there is only one cutpoint candidate (binary variable)
-                        // you have to split at 0.5
-                        // index is 0 and value is 0.5
-                        temp_node[kk]->setc(0);
-                        temp_node[kk]->setc_value(0.5);
-                    }
-                    else
-                    {
-                        index_in_full = 0;
-                        while (xi_mod[temp_node[kk]->getv()][index_in_full] < temp_node[kk]->getc_value() && index_in_full <= xi_mod[temp_node[kk]->getv()].size())
-                        {
-                            index_in_full++;
-                        }
-
-                        if (index_in_full > xi_mod[temp_node[kk]->getv()].size())
-                        {
-                            index_in_full = xi_mod[temp_node[kk]->getv()].size() - 1;
-                        }
-                        temp_node[kk]->setc(index_in_full - 1);
-                    }
-                }
+              index_in_full++;
             }
+
+            if (index_in_full > xi_mod[temp_node[kk]->getv()].size())
+            {
+              index_in_full = xi_mod[temp_node[kk]->getv()].size() - 1;
+            }
+            // temp_node[kk]->setc(index_in_full - 1);
+            temp_node[kk]->setc(index_in_full);
+          }
         }
-        // cout << " print some nodes, after " << endl;
-        // cout << "variable index " << temp_node[0]->getv() << " cutpoint index " << temp_node[0]->getc() << " cutpoint value " << temp_node[0]->getc_value() << endl;
-        // cout << " last cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc() - 1] << " current cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc()] << " next cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc() + 1] << endl;
-        // cout << "---------------------------------" << endl;
+      }
     }
-
-    // scale all mod trees tau(x) * (b1 - b0) from XBCF
-    // for (size_t j = 0; j < mm_mod; j++)
-    // {
-    //     temp_node.clear();
-    //     t_mod[j].getnodes(temp_node);
-    //     for (size_t kk = 0; kk < temp_node.size(); kk++)
-    //     {
-    //         cout << "before scaling mod tree " << temp_node[kk]->getm() << endl;
-    //         temp_node[kk]->setm(temp_node[kk]->getm() * mod_tree_scaling);
-    //         cout << "after scaling mod tree " << temp_node[kk]->getm() << endl;
-    //     }
-    // }
-
-    // cout << "scaling parameter " << mod_tree_scaling << endl;
-
-    // cout << "load all trees " << endl;
-
-    // cout << "print con trees " << endl;
-    // for (size_t tt = 0; tt < mm_con; tt++)
-    // {
-    //     cout << "index " << tt << endl;
-    //     cout << t_con[tt] << endl;
-    // }
-
-    // cout << "print mod trees " << endl;
-    // for (size_t tt = 0; tt < mm_mod; tt++)
-    // {
-    //     cout << "index " << tt << endl;
-    //     cout << t_mod[tt] << endl;
-    // }
+    // cout << " print some nodes, after " << endl;
+    // cout << "variable index " << temp_node[0]->getv() << " cutpoint index " << temp_node[0]->getc() << " cutpoint value " << temp_node[0]->getc_value() << endl;
+    // cout << " last cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc() - 1] << " current cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc()] << " next cutpoint " << xi_con[temp_node[0]->getv()][temp_node[0]->getc() + 1] << endl;
+    // cout << "---------------------------------" << endl;
+  }
 
     /*****************************************************************************
   /* Setup the model

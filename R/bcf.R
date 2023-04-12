@@ -267,6 +267,11 @@ bcf <- function(y, z, x_control, x_moderate=x_control, pihat, w = NULL,
   # print(x_c)
   # cat("cutpoint_list_c \n")
   # print(cutpoint_list_c)
+  
+  con_sd = ifelse(abs(2*sdy - sd_control)<1e-6, 2, sd_control/sdy)
+  mod_sd = ifelse(abs(sdy - sd_moderate)<1e-6, 1, sd_moderate/sdy)/ifelse(use_tauscale,0.674,1)
+  print(paste0("con_sd = ",con_sd))
+  print(paste0("mod_sd = ",mod_sd))
   fitbcf = bcfoverparRcppClean(yscale[perm], z[perm], w[perm],
                         t(x_c[perm,]), t(x_m[perm,,drop=FALSE]), t(x_m[1,,drop=FALSE]),
                         cutpoint_list_c, cutpoint_list_m,
